@@ -201,12 +201,11 @@ function renderCart() {
     document.getElementById('cartTotal').textContent = `Rp ${finalTotal.toLocaleString('id-ID')}`;
 }
 
-// Trigger Checkout Popup Modal
+// Trigger Checkout Popup Modal (Tombol Bayar Saja)
 function openPaymentModal() {
     if (cart.length === 0) return alert('Keranjang belanja masih kosong!');
     const finalTotalText = document.getElementById('cartTotal').textContent;
     
-    // Create modern popup modal dynamically if not present
     let modal = document.getElementById('paymentModal');
     if (!modal) {
         modal = document.createElement('div');
@@ -335,7 +334,6 @@ function printReceipt(trx) {
     receiptWindow.document.close();
 }
 
-
 // ---------------- TAB 2: PRODUK LOGIC ----------------
 function renderProductTable() {
     const tbody = document.getElementById('productTableBody');
@@ -357,8 +355,7 @@ function renderProductTable() {
     });
 }
 
-
-// ---------------- TAB 3: ADMIN & KARYAWAN SHIFT MANAGEMENT ----------------
+// ---------------- TAB 3: ADMIN USER MANAGEMENT ----------------
 function renderUserTable() {
     const tbody = document.getElementById('userTableBody');
     if(!tbody) return;
@@ -370,7 +367,7 @@ function renderUserTable() {
             <td>${u.username}</td>
             <td>${u.position}</td>
             <td><span class="badge badge-${u.role.toLowerCase()}">${u.role}</span></td>
-            <td><span class="badge bg-info">${u.shift || 'Pagi'}</span></td>
+            <td><span class="badge bg-info">Shift ${u.shift || 'Pagi'}</span></td>
             <td><span class="badge ${u.status === 'On Duty' ? 'bg-success' : 'bg-secondary'}">${u.status || 'Off'}</span></td>
             <td>
                 <button class="btn-icon" onclick="editUser(${u.id})"><i class="fa-solid fa-pen"></i></button>
@@ -423,7 +420,6 @@ function resetUserForm() {
     if(document.getElementById('userId')) document.getElementById('userId').value = '';
 }
 
-
 // ---------------- TAB 4: AKUNTING (SEARCH, TRX ID, & DOWNLOAD) ----------------
 function renderAccountingData() {
     const searchDate = document.getElementById('accSearchDate')?.value || '';
@@ -446,9 +442,9 @@ function renderAccountingData() {
         tr.innerHTML = `
             <td><code>${t.id}</code></td>
             <td>${t.date} (${t.day || '-'})</td>
-            <td>${t.time || (t.hour + ':00')}</td>
+            <td>${t.time || '-'}</td>
             <td><strong>${t.cashier}</strong></td>
-            <td>${t.items.length} Jenis Produk (${t.items.reduce((acc, curr)=>acc+curr.qty, 0)} Pcs)</td>
+            <td>${t.items.length} Jenis (${t.items.reduce((acc, curr)=>acc+curr.qty, 0)} Pcs)</td>
             <td class="text-primary"><strong>Rp ${t.totalAmount.toLocaleString('id-ID')}</strong></td>
             <td>
                 <button class="btn btn-sm btn-info" onclick="viewTransactionDetail('${t.id}')">Detail</button>
@@ -469,17 +465,32 @@ function renderAccountingData() {
 function viewTransactionDetail(txId) {
     const trx = transactions.find(t => t.id === txId);
     if (!trx) return;
-    alert(`Rincian Transaksi [${trx.id}]:\nTanggal: ${trx.date} - ${trx.time}\nKasir: ${trx.cashier}\n\nItem Belanja:\n` + 
-          trx.items.map(i => `- ${i.name} (${i.qty}x @ Rp ${i.price})`).join('\n') + 
-          `\n\nTotal: Rp ${trx.totalAmount.toLocaleString('id-ID')}`);
+    
+    let detailHtml = `Rincian Transaksi [${trx.id}]\n`;
+    detailHtml += `Tanggal: ${trx.date} (${trx.day || '-'}) - Pukul ${trx.time}\n`;
+    detailHtml += `Kasir: ${trx.cashier}\n\n`;
+    detailHtml += `Daftar Produk:\n`;
+    trx.items.forEach((i, idx) => {
+        const itemPrice = i.price - (i.price * (i.discount / 100));
+        detailHtml += `${idx + 1}. ${i.name} (${i.qty}x @ Rp ${itemPrice.toLocaleString('id-ID')})\n`;
+    });
+    detailHtml += `\nTotal: Rp ${trx.totalAmount.toLocaleString('id-ID')}`;
+    detailHtml += `\nTunai: Rp ${trx.paidAmount.toLocaleString('id-ID')} | Kembalian: Rp ${trx.changeAmount.toLocaleString('id-ID')}`;
+    
+    alert(detailHtml);
 }
 
 function downloadAccountingCSV() {
-    if (transactions.length === 0) return alert('Belum ada data transaksi untuk diunduh.');
+    if (transactions.length === 0) {
+        alert('Belum ada data transaksi yang dapat diunduh.');
+        return;
+    }
+
     let csvContent = "data:text/csv;charset=utf-8,ID Transaksi,Tanggal,Hari,Jam,Kasir,Total Belanja\n";
     transactions.forEach(t => {
         csvContent += `"${t.id}","${t.date}","${t.day || ''}","${t.time || ''}","${t.cashier}",${t.totalAmount}\n`;
     });
+
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
@@ -489,8 +500,7 @@ function downloadAccountingCSV() {
     document.body.removeChild(link);
 }
 
-
-// ---------------- TAB 5: KARYAWAN ONDUTY / SHIFT STATUS ----------------
+// ---------------- TAB 5: KARYAWAN SHIFT & ONDUTY MANAGEMENT ----------------
 function renderKaryawanList() {
     const container = document.getElementById('karyawanTableBody');
     if(!container) return;
@@ -501,7 +511,13 @@ function renderKaryawanList() {
         tr.innerHTML = `
             <td><strong>${u.name}</strong></td>
             <td>${u.position}</td>
-            <td><span class="badge bg-info">${u.shift || 'Pagi'}</span></td>
+            <td>
+                <select class="form-control form-control-sm" onchange="updateUserShift(${u.id}, this.value)">
+                    <option value="Pagi" ${u.shift === 'Pagi' ? 'selected' : ''}>Shift Pagi</option>
+                    <option value="Siang" ${u.shift === 'Siang' ? 'selected' : ''}>Shift Siang</option>
+                    <option value="Sela" ${u.shift === 'Sela' ? 'selected' : ''}>Shift Sela</option>
+                </select>
+            </td>
             <td>
                 <select class="form-control form-control-sm" onchange="updateUserStatus(${u.id}, this.value)">
                     <option value="On Duty" ${u.status === 'On Duty' ? 'selected' : ''}>On Duty (Masuk)</option>
@@ -511,6 +527,15 @@ function renderKaryawanList() {
         `;
         container.appendChild(tr);
     });
+}
+
+function updateUserShift(userId, newShift) {
+    const usr = users.find(u => u.id === userId);
+    if (usr) {
+        usr.shift = newShift;
+        localStorage.setItem('pos_users', JSON.stringify(users));
+        renderUserTable();
+    }
 }
 
 function updateUserStatus(userId, newStatus) {
